@@ -56,18 +56,18 @@ func removeARecord(api *cloudflare.API, domain string, ip string) error {
 	return api.DeleteDNSRecord(zoneID, records[0].ID)
 }
 
-func getVirtualHost(client *docker.Client, id string) (string, error) {
+func getVirtualHosts(client *docker.Client, id string) ([]string, error) {
 	container, err := client.InspectContainer(id)
 	if err != nil {
-		return "", err
+		return []string{}, err
 	}
 
 	for _, ev := range container.Config.Env {
 		if strings.HasPrefix(ev, "VIRTUAL_HOST") {
-			return strings.Split(ev, "=")[1], nil
+			return strings.Split(strings.Split(ev, "=")[1], ","), nil
 		}
 	}
-	return "", errors.New("No VIRTUAL_HOST env var")
+	return []string{}, errors.New("No VIRTUAL_HOST env var")
 }
 
 func main() {
@@ -91,31 +91,33 @@ func main() {
 	for msg := range events {
 		if msg.Type == "container" {
 			if msg.Action == "start" {
-				domain, err := getVirtualHost(client, msg.ID)
+				domains, err := getVirtualHosts(client, msg.ID)
 				if err != nil {
-					log.Printf("%v: %v", domain, err)
+					log.Printf("%v: %v", domains, err)
 					continue
 				}
-				err = addARecord(cfAPI, domain, proxyIP)
-				if err != nil {
-					log.Printf("%v: %v", domain, err)
-					continue
+				for _, domain := range domains {
+					err = addARecord(cfAPI, domain, proxyIP)
+					if err != nil {
+						log.Printf("%v: %v", domain, err)
+						continue
+					}
 				}
-
-				log.Printf("Added %s %s", domain, proxyIP)
+				log.Printf("Added %s %s", domains, proxyIP)
 			} else if msg.Action == "die" {
-				domain, err := getVirtualHost(client, msg.ID)
+				domains, err := getVirtualHosts(client, msg.ID)
 				if err != nil {
-					log.Printf("%v: %v", domain, err)
+					log.Printf("%v: %v", domains, err)
 					continue
 				}
-				err = removeARecord(cfAPI, domain, proxyIP)
-				if err != nil {
-					log.Printf("%v: %v", domain, err)
-					continue
+				for _, domain := range domains {
+					err = removeARecord(cfAPI, domain, proxyIP)
+					if err != nil {
+						log.Printf("%v: %v", domain, err)
+						continue
+					}
 				}
-
-				log.Printf("Removed %s %s", domain, proxyIP)
+				log.Printf("Removed %s %s", domains, proxyIP)
 			}
 		}
 
