@@ -103,7 +103,7 @@ func main() {
 				}
 
 				log.Printf("Added %s %s", domain, proxyIP)
-			} else if msg.Action == "kill" {
+			} else if msg.Action == "die" {
 				domain, err := getVirtualHost(client, msg.ID)
 				if err != nil {
 					log.Printf("%v: %v", domain, err)
